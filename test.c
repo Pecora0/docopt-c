@@ -17,12 +17,12 @@ static bool upattern_equal(Docopt__UPattern p, Docopt__UPattern q) {
                 if (!upattern_equal(p.child[i], q.child[i])) return false;
             }
             break;
-        case DOCOPT__UPATTERN_COMMAND:
-        case DOCOPT__UPATTERN_ARGUMENT:
-        case DOCOPT__UPATTERN_OPTION:
+        case DOCOPT__UPATTERN_SIMPLE:
             munit_assert_string_equal(p.name.it, q.name.it);
             break;
         case DOCOPT__UPATTERN_GROUP:
+            munit_assert(p.optional == q.optional);
+            munit_assert(p.alternative == q.alternative);
             munit_assert_size(p.count, ==, q.count);
             for (size_t i=0; i<p.count; i++) {
                 if (!upattern_equal(p.child[i], q.child[i])) return false;
@@ -77,8 +77,8 @@ static MunitResult command(const MunitParameter params[], void *user_data_or_fix
 
     const char *in = "  naval_fate ship create";
     Docopt__UPattern children[] = {
-        { .kind = DOCOPT__UPATTERN_COMMAND, .name = {"ship"} },
-        { .kind = DOCOPT__UPATTERN_COMMAND, .name = {"create"} },
+        { .kind = DOCOPT__UPATTERN_SIMPLE, .name = {"ship"} },
+        { .kind = DOCOPT__UPATTERN_SIMPLE, .name = {"create"} },
     };
     Docopt__UPattern expect = {
         .kind = DOCOPT__UPATTERN_ROOT,
@@ -99,8 +99,8 @@ static MunitResult argument(const MunitParameter params[], void *user_data_or_fi
 
     const char *in = "my_program <host> <port>";
     Docopt__UPattern children[] = {
-        { .kind = DOCOPT__UPATTERN_ARGUMENT, .name = {"<host>"} },
-        { .kind = DOCOPT__UPATTERN_ARGUMENT, .name = {"<port>"} },
+        { .kind = DOCOPT__UPATTERN_SIMPLE, .name = {"<host>"} },
+        { .kind = DOCOPT__UPATTERN_SIMPLE, .name = {"<port>"} },
     };
     Docopt__UPattern expect = {
         .kind = DOCOPT__UPATTERN_ROOT,
@@ -121,8 +121,8 @@ static MunitResult option_simple(const MunitParameter params[], void *user_data_
 
     const char *in = "my_program -a -b";
     Docopt__UPattern children[] = {
-        { .kind = DOCOPT__UPATTERN_OPTION, .name = {"-a"} },
-        { .kind = DOCOPT__UPATTERN_OPTION, .name = {"-b"} },
+        { .kind = DOCOPT__UPATTERN_SIMPLE, .name = {"-a"} },
+        { .kind = DOCOPT__UPATTERN_SIMPLE, .name = {"-b"} },
     };
     Docopt__UPattern expect = {
         .kind = DOCOPT__UPATTERN_ROOT,
@@ -143,9 +143,9 @@ static MunitResult optional_elem(const MunitParameter params[], void *user_data_
 
     const char *in = "my_program [command --option <argument>]";
     Docopt__UPattern children[] = {
-        { .kind = DOCOPT__UPATTERN_COMMAND, .name = {"command"} },
-        { .kind = DOCOPT__UPATTERN_OPTION,  .name = {"--option"} },
-        { .kind = DOCOPT__UPATTERN_ARGUMENT, .name = {"<argument>"} },
+        { .kind = DOCOPT__UPATTERN_SIMPLE, .name = {"command"} },
+        { .kind = DOCOPT__UPATTERN_SIMPLE, .name = {"--option"} },
+        { .kind = DOCOPT__UPATTERN_SIMPLE, .name = {"<argument>"} },
     };
     Docopt__UPattern child = {
         .kind = DOCOPT__UPATTERN_GROUP,
@@ -172,13 +172,13 @@ static MunitResult exclusive(const MunitParameter params[], void *user_data_or_f
 
     const char *in = "my_program go (--up | --down | --left | --right)";
     Docopt__UPattern alts[] = {
-        { .kind = DOCOPT__UPATTERN_OPTION, .name = {"--up"} },
-        { .kind = DOCOPT__UPATTERN_OPTION, .name = {"--down"} },
-        { .kind = DOCOPT__UPATTERN_OPTION, .name = {"--left"} },
-        { .kind = DOCOPT__UPATTERN_OPTION, .name = {"--right"} },
+        { .kind = DOCOPT__UPATTERN_SIMPLE, .name = {"--up"} },
+        { .kind = DOCOPT__UPATTERN_SIMPLE, .name = {"--down"} },
+        { .kind = DOCOPT__UPATTERN_SIMPLE, .name = {"--left"} },
+        { .kind = DOCOPT__UPATTERN_SIMPLE, .name = {"--right"} },
     };
     Docopt__UPattern children[] = {
-        { .kind = DOCOPT__UPATTERN_COMMAND, .name = {"go"} },
+        { .kind = DOCOPT__UPATTERN_SIMPLE, .name = {"go"} },
         { .kind = DOCOPT__UPATTERN_GROUP, .optional = false, .alternative = true, .count = ARRAY_LEN(alts), .child = alts },
     };
     Docopt__UPattern expect = {
@@ -200,11 +200,11 @@ static MunitResult repeat(const MunitParameter params[], void *user_data_or_fixt
 
     const char *in = "my_program open <file>...";
     Docopt__UPattern child = {
-        .kind = DOCOPT__UPATTERN_ARGUMENT,
+        .kind = DOCOPT__UPATTERN_SIMPLE,
         .name = {"<file>"},
     };
     Docopt__UPattern children[] = {
-        { .kind = DOCOPT__UPATTERN_COMMAND, .name = {"open"} },
+        { .kind = DOCOPT__UPATTERN_SIMPLE, .name = {"open"} },
         { .kind = DOCOPT__UPATTERN_REPEAT, .count = 1, .child = &child },
     };
     Docopt__UPattern expect = {

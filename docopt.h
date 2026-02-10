@@ -162,9 +162,7 @@ void docopt__append_binding(Docopt__Usage_Match *m, Docopt__Binding b) {
 typedef enum {
     DOCOPT__UPATTERN_ROOT, // recursive
 
-    DOCOPT__UPATTERN_COMMAND,  // simple
-    DOCOPT__UPATTERN_ARGUMENT, // simple
-    DOCOPT__UPATTERN_OPTION,   // simple
+    DOCOPT__UPATTERN_SIMPLE,
 
     DOCOPT__UPATTERN_GROUP,       // recursive
     DOCOPT__UPATTERN_REPEAT,      // recursive
@@ -203,14 +201,14 @@ bool docopt__compile_upattern_ex(char **code, Docopt__UPattern *result) {
     if (word.it[0] == '\0') return false;
     if (docopt__is_argument(word.it)) {
         Docopt__UPattern child = {
-            .kind = DOCOPT__UPATTERN_ARGUMENT,
+            .kind = DOCOPT__UPATTERN_SIMPLE,
             .optional = false,
             .name = word,
         };
         docopt__append_upattern(result, child);
     } else if (docopt__is_option(word.it)) {
         Docopt__UPattern child = {
-            .kind = DOCOPT__UPATTERN_OPTION,
+            .kind = DOCOPT__UPATTERN_SIMPLE,
             .optional = false,
             .name = word,
         };
@@ -257,7 +255,7 @@ bool docopt__compile_upattern_ex(char **code, Docopt__UPattern *result) {
         result->child[result->count-1] = child;
     } else {
         Docopt__UPattern child = {
-            .kind = DOCOPT__UPATTERN_COMMAND,
+            .kind = DOCOPT__UPATTERN_SIMPLE,
             .optional = false,
             .name = word,
         };
@@ -295,15 +293,13 @@ bool docopt__match_upattern(Docopt__UPattern pattern, const char **argv, int arg
                 if (!docopt__match_upattern(pattern.child[i], argv, argc, result)) return false;
             }
             return true;
-        case DOCOPT__UPATTERN_COMMAND:
+        case DOCOPT__UPATTERN_SIMPLE:
             assert(argc > 0);
+            if (docopt__is_option(pattern.name.it)) assert(0);
+            if (docopt__is_argument(pattern.name.it)) assert(0);
             if (strcmp(pattern.name.it, argv[0]) != 0) return false;
             argv++; argc--;
             return true;
-        case DOCOPT__UPATTERN_ARGUMENT:
-            assert(0);
-        case DOCOPT__UPATTERN_OPTION:
-            assert(0);
         case DOCOPT__UPATTERN_GROUP:
             assert(0);
         case DOCOPT__UPATTERN_REPEAT:
@@ -449,11 +445,7 @@ bool docopt__umatch(Docopt__UPattern p, int argc, const char **argv, Docopt_Matc
                 assert(0);
             }
             return true;
-        case DOCOPT__UPATTERN_COMMAND:
-            assert(0);
-        case DOCOPT__UPATTERN_ARGUMENT:
-            assert(0);
-        case DOCOPT__UPATTERN_OPTION:
+        case DOCOPT__UPATTERN_SIMPLE:
             assert(0);
         case DOCOPT__UPATTERN_GROUP:
             assert(0);
