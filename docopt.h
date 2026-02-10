@@ -160,12 +160,9 @@ void docopt__append_binding(Docopt__Usage_Match *m, Docopt__Binding b) {
 }
 
 typedef enum {
-    DOCOPT__UPATTERN_ROOT, // recursive
-
+    DOCOPT__UPATTERN_ROOT,
     DOCOPT__UPATTERN_SIMPLE,
-
-    DOCOPT__UPATTERN_GROUP,       // recursive
-    DOCOPT__UPATTERN_REPEAT,      // recursive
+    DOCOPT__UPATTERN_GROUP,
 
     DOCOPT__UPATTERN_KIND_COUNT,
 } Docopt__UPattern_Kind;
@@ -175,6 +172,7 @@ typedef struct Docopt__UPattern {
     Docopt__Short_String name;
     bool optional;
     bool alternative;
+    bool repeat;
     size_t capacity;
     size_t count;
     struct Docopt__UPattern *child;
@@ -247,8 +245,9 @@ bool docopt__compile_upattern_ex(char **code, Docopt__UPattern *result) {
         assert(result->count > 0);
         Docopt__UPattern before = result->child[result->count-1];
         Docopt__UPattern child = {
-            .kind = DOCOPT__UPATTERN_REPEAT,
+            .kind = DOCOPT__UPATTERN_GROUP,
             .optional = before.optional,
+            .repeat = true,
             .count = 0,
         };
         docopt__append_upattern(&child, before);
@@ -301,8 +300,6 @@ bool docopt__match_upattern(Docopt__UPattern pattern, const char **argv, int arg
             argv++; argc--;
             return true;
         case DOCOPT__UPATTERN_GROUP:
-            assert(0);
-        case DOCOPT__UPATTERN_REPEAT:
             assert(0);
         case DOCOPT__UPATTERN_KIND_COUNT:
             assert(0);
@@ -448,8 +445,6 @@ bool docopt__umatch(Docopt__UPattern p, int argc, const char **argv, Docopt_Matc
         case DOCOPT__UPATTERN_SIMPLE:
             assert(0);
         case DOCOPT__UPATTERN_GROUP:
-            assert(0);
-        case DOCOPT__UPATTERN_REPEAT:
             assert(0);
         case DOCOPT__UPATTERN_KIND_COUNT:
             assert(0);

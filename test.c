@@ -23,15 +23,11 @@ static bool upattern_equal(Docopt__UPattern p, Docopt__UPattern q) {
         case DOCOPT__UPATTERN_GROUP:
             munit_assert(p.optional == q.optional);
             munit_assert(p.alternative == q.alternative);
+            munit_assert(p.repeat == q.repeat);
             munit_assert_size(p.count, ==, q.count);
             for (size_t i=0; i<p.count; i++) {
                 if (!upattern_equal(p.child[i], q.child[i])) return false;
             }
-            break;
-        case DOCOPT__UPATTERN_REPEAT:
-            munit_assert_size(p.count, ==, 1);
-            munit_assert_size(q.count, ==, 1);
-            if (!upattern_equal(p.child[0], q.child[0])) return false;
             break;
         case DOCOPT__UPATTERN_KIND_COUNT:
             munit_assert(false);
@@ -205,7 +201,7 @@ static MunitResult repeat(const MunitParameter params[], void *user_data_or_fixt
     };
     Docopt__UPattern children[] = {
         { .kind = DOCOPT__UPATTERN_SIMPLE, .name = {"open"} },
-        { .kind = DOCOPT__UPATTERN_REPEAT, .count = 1, .child = &child },
+        { .kind = DOCOPT__UPATTERN_GROUP, .optional = false, .repeat = true, .count = 1, .child = &child },
     };
     Docopt__UPattern expect = {
         .kind = DOCOPT__UPATTERN_ROOT,
