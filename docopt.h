@@ -169,98 +169,89 @@ typedef enum {
 
 typedef struct Docopt__UPattern {
     Docopt__UPattern_Kind kind;
+
     Docopt__Short_String name;
+
     bool optional;
     bool alternative;
     bool repeat;
-    size_t capacity;
-    size_t count;
-    struct Docopt__UPattern *child;
+    struct Docopt__UPattern *head;
+    struct Docopt__UPattern *rest;
 } Docopt__UPattern;
 
-void docopt__append_upattern(Docopt__UPattern *lst, Docopt__UPattern p) {
-    if (lst->capacity == 0) {
-        lst->capacity = 16;
-        lst->count = 0;
-        lst->child = malloc(lst->capacity * sizeof(p));
-    }
-    if (lst->count == lst->capacity) {
-        lst->capacity *= 2;
-        lst->child = realloc(lst->child, lst->capacity * sizeof(p));
-        assert(lst->child != NULL);
-    }
-    assert(lst->count < lst->capacity);
-    lst->child[lst->count] = p;
-    lst->count++;
+static Docopt__UPattern *docopt__new_upattern_simple(const char *name) {
+    // TODO: allocate the struct in an arena or something similar such that it can be freed all at once
+    Docopt__UPattern *result = malloc(sizeof(Docopt__UPattern));
+    assert(result != NULL);
+    result->kind = DOCOPT__UPATTERN_SIMPLE;
+    result->name = docopt__make_short_string(name, strlen(name));
+    return result;
 }
 
-bool docopt__compile_upattern_ex(char **code, Docopt__UPattern *result) {
+static Docopt__UPattern *docopt__new_upattern_group() {
+    Docopt__UPattern *result = malloc(sizeof(Docopt__UPattern));
+    assert(result != NULL);
+    memset(result, 0, sizeof(Docopt__UPattern));
+    result->kind = DOCOPT__UPATTERN_GROUP;
+    return result;
+}
+
+void docopt__compile_upattern_ex(char **code, Docopt__UPattern *result) {
     Docopt__Short_String word = docopt__word(code);
-    if (word.it[0] == '\0') return false;
+    if (word.it[0] == '\0') {
+        assert(result->head != NULL);
+        return;
+    }
+
+    Docopt__UPattern *head;
     if (docopt__is_argument(word.it)) {
-        Docopt__UPattern child = {
-            .kind = DOCOPT__UPATTERN_SIMPLE,
-            .optional = false,
-            .name = word,
-        };
-        docopt__append_upattern(result, child);
+        head = docopt__new_upattern_simple(word.it);
     } else if (docopt__is_option(word.it)) {
-        Docopt__UPattern child = {
-            .kind = DOCOPT__UPATTERN_SIMPLE,
-            .optional = false,
-            .name = word,
-        };
-        docopt__append_upattern(result, child);
+        head = docopt__new_upattern_simple(word.it);
     } else if (strcmp("[", word.it) == 0) {
-        Docopt__UPattern child = {
-            .kind = DOCOPT__UPATTERN_GROUP,
-            .optional = true,
-            .count = 0,
-        };
-        while (docopt__compile_upattern_ex(code, &child)) { }
-        docopt__append_upattern(result, child);
+        head = docopt__new_upattern_group();
+        head->optional = true;
+        docopt__compile_upattern_ex(code, head);
     } else if (strcmp("]", word.it) == 0) {
-        return false;
+        assert(result->head != NULL);
+        return;
     } else if (strcmp("(", word.it) == 0) {
-        Docopt__UPattern child = {
-            .kind = DOCOPT__UPATTERN_GROUP,
-            .optional = false,
-            .alternative = false,
-            .count = 0,
-        };
-        while (docopt__compile_upattern_ex(code, &child)) { }
-        docopt__append_upattern(result, child);
+        head = docopt__new_upattern_group();
+        docopt__compile_upattern_ex(code, head);
     } else if (strcmp(")", word.it) == 0) {
-        return false;
+        assert(result->head != NULL);
+        return;
     } else if (strcmp("|", word.it) == 0) {
         assert(result->kind == DOCOPT__UPATTERN_GROUP);
-        if (!result->alternative) {
-            assert(result->count > 0);
-            if (result->count > 1) {
-                assert(0);
-            }
-            result->alternative = true;
-        }
+        assert(result->head != NULL);
+        result->alternative = true;
+        docopt__compile_upattern_ex(code, result);
+        return;
     } else if (strcmp("...", word.it) == 0) {
-        assert(result->count > 0);
-        Docopt__UPattern before = result->child[result->count-1];
-        Docopt__UPattern child = {
-            .kind = DOCOPT__UPATTERN_GROUP,
-            .optional = before.optional,
-            .repeat = true,
-            .count = 0,
-        };
-        docopt__append_upattern(&child, before);
-        result->child[result->count-1] = child;
+        assert(result->kind == DOCOPT__UPATTERN_GROUP);
+        assert(result->head != NULL);
+        result->repeat = true;
+        return;
     } else {
-        Docopt__UPattern child = {
-            .kind = DOCOPT__UPATTERN_SIMPLE,
-            .optional = false,
-            .name = word,
-        };
-        docopt__append_upattern(result, child);
+        head = docopt__new_upattern_simple(word.it);
     }
-    return true;
+
+    if (result->head == NULL) {
+        result->head = head;
+        result->rest = NULL;
+
+        docopt__compile_upattern_ex(code, result);
+
+        return;
+    } else {
+        assert(result->rest == NULL);
+
+        result->rest = docopt__new_upattern_group();
+        result->rest->head = head;
+        docopt__compile_upattern_ex(code, result->rest);
+
+        return;
+    }
 }
 
 Docopt__UPattern docopt__compile_upattern(const char *code) {
@@ -268,10 +259,8 @@ Docopt__UPattern docopt__compile_upattern(const char *code) {
 
     result.kind = DOCOPT__UPATTERN_ROOT;
     char *code_cpy = strdup(code); // TODO: free this memory
-    result.name = docopt__word(&code_cpy);
-    assert(result.name.it[0] != '\0');
 
-    while (docopt__compile_upattern_ex(&code_cpy, &result)) {}
+    docopt__compile_upattern_ex(&code_cpy, &result);
 
     return result;
 }
@@ -288,9 +277,7 @@ bool docopt__match_upattern(Docopt__UPattern pattern, const char **argv, int arg
             result->program_name = argv[0];
             argv++; argc--;
 
-            for (size_t i=0; i<pattern.count; i++) {
-                if (!docopt__match_upattern(pattern.child[i], argv, argc, result)) return false;
-            }
+            assert(0);
             return true;
         case DOCOPT__UPATTERN_SIMPLE:
             assert(argc > 0);
@@ -438,9 +425,7 @@ bool docopt__umatch(Docopt__UPattern p, int argc, const char **argv, Docopt_Matc
             m->key[0]   = strdup(p.name.it);
             m->value[0] = argv[0];
             m->count++;
-            for (size_t i=0; i<p.count; i++) {
-                assert(0);
-            }
+            assert(0);
             return true;
         case DOCOPT__UPATTERN_SIMPLE:
             assert(0);
