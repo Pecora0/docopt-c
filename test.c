@@ -473,7 +473,7 @@ static MunitResult interpret(const MunitParameter params[], void *user_data_or_f
     munit_assert_string_equal(m.key[4], "<name>");
     munit_assert_string_equal(m.value[4], "enterprise");
 
-    return MUNIT_ERROR;
+    return MUNIT_OK;
 }
 
 MunitTest test_array[] = {

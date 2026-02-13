@@ -5,6 +5,7 @@ typedef enum {
     DOCOPT_PROGRAM_NAME,
     DOCOPT_SUBCOMMAND,
     DOCOPT_ARGUMENT,
+    DOCOPT_OPTION,
     DOCOPT_ELEMENT_COUNT,
 } Docopt_Element_Kind;
 
@@ -130,35 +131,6 @@ Docopt__Short_String docopt__word(char **rest) {
     return result;
 }
 
-typedef struct {
-    Docopt__Short_String key;
-    const char *value;
-} Docopt__Binding;
-
-typedef struct {
-    const char *program_name;
-    size_t capacity;
-    size_t count;
-    Docopt__Binding *items;
-} Docopt__Usage_Match;
-
-#define DOCOPT__USAGE_MATCH_INIT_CAP 16
-
-void docopt__append_binding(Docopt__Usage_Match *m, Docopt__Binding b) {
-    if (m->capacity == 0) {
-        m->capacity = DOCOPT__USAGE_MATCH_INIT_CAP;
-        m->count = 0;
-        m->items = malloc(m->capacity * sizeof(b));
-    }
-    if (m->count == m->capacity) {
-        m->capacity *= 2;
-        m->items = realloc(m->items, m->capacity * sizeof(b));
-    }
-    assert(m->count < m->capacity);
-    m->items[m->count] = b;
-    m->count++;
-}
-
 typedef enum {
     DOCOPT__UPATTERN_ROOT,
     DOCOPT__UPATTERN_SIMPLE,
@@ -263,35 +235,6 @@ Docopt__UPattern docopt__compile_upattern(const char *code) {
     docopt__compile_upattern_ex(&code_cpy, &result);
 
     return result;
-}
-
-bool docopt__match_upattern(Docopt__UPattern pattern, const char **argv, int argc, Docopt__Usage_Match *result) {
-    switch (pattern.kind) {
-        case DOCOPT__UPATTERN_ROOT:
-            Docopt__Short_String name = pattern.name;
-            assert(strlen(name.it) > 0);
-            assert(argc > 0);
-            if (strcmp(name.it, argv[0]) != 0) {
-                return false;
-            }
-            result->program_name = argv[0];
-            argv++; argc--;
-
-            assert(0);
-            return true;
-        case DOCOPT__UPATTERN_SIMPLE:
-            assert(argc > 0);
-            if (docopt__is_option(pattern.name.it)) assert(0);
-            if (docopt__is_argument(pattern.name.it)) assert(0);
-            if (strcmp(pattern.name.it, argv[0]) != 0) return false;
-            argv++; argc--;
-            return true;
-        case DOCOPT__UPATTERN_GROUP:
-            assert(0);
-        case DOCOPT__UPATTERN_KIND_COUNT:
-            assert(0);
-    }
-    assert(0);
 }
 
 #define DOCOPT__OPTION_KEY_CAPACITY 4
@@ -415,22 +358,75 @@ Docopt__Pattern docopt__compile_pattern(const char *msg) {
     return result;
 }
 
-bool docopt__umatch(Docopt__UPattern p, int argc, const char **argv, Docopt_Match *m) {
+void docopt__append_match(Docopt_Match *m, Docopt_Element_Kind kind, const char *key, const char *val) {
+    size_t n = m->count;
+    m->kind[n] = kind;
+    m->key[n] = key;
+    m->value[n] = val;
+    m->count++;
+}
+
+int docopt__umatch(Docopt__UPattern p, int argc, const char **argv, Docopt_Match *m) {
     switch (p.kind) {
         case DOCOPT__UPATTERN_ROOT:
-            if (argc == 0) return false;
-            assert(argc > 0);
-            m->count = 0;
-            m->kind[0]  = DOCOPT_PROGRAM_NAME;
-            m->key[0]   = strdup(p.name.it);
-            m->value[0] = argv[0];
-            m->count++;
-            assert(0);
-            return true;
+            {
+                if (argc == 0) return 0;
+                assert(argc > 0);
+                m->count = 0;
+
+                assert(p.head->kind == DOCOPT__UPATTERN_SIMPLE);
+                docopt__append_match(m, DOCOPT_PROGRAM_NAME, strdup(p.head->name.it), argv[0]);
+                int n1 = 1;
+
+                int n2 = docopt__umatch(*p.rest, argc-1, argv+1, m);
+                return n1+n2;
+            }
         case DOCOPT__UPATTERN_SIMPLE:
+            if (argc == 0) return 0;
+            assert(argc > 0);
+            if (docopt__is_option(p.name.it)) {
+                assert(0);
+            } else if (docopt__is_argument(p.name.it)) {
+                docopt__append_match(m, DOCOPT_ARGUMENT, strdup(p.name.it), argv[0]);
+                return 1;
+            } else {
+                if (strcmp(p.name.it, argv[0]) == 0) {
+                    docopt__append_match(m, DOCOPT_SUBCOMMAND, NULL, argv[0]);
+                    return 1;
+                }
+                return 0;
+            }
             assert(0);
         case DOCOPT__UPATTERN_GROUP:
-            assert(0);
+            {
+                assert(p.head != NULL);
+                if (p.optional) assert(0);
+                if (p.alternative) assert(0);
+                if (p.repeat) {
+                    if (p.rest == NULL) {
+                        int total = 0;
+                        int n = docopt__umatch(*p.head, argc, argv, m);
+                        if (n == 0) return 0;
+                        assert(n > 0);
+                        total += n;
+                        while (total <= argc && n > 0) {
+                            n = docopt__umatch(*p.head, argc-total, argv+total, m);
+                            assert(n >= 0);
+                            total += n;
+                        }
+                        return total;
+                    }
+                    assert(0);
+                }
+                int n1 = docopt__umatch(*p.head, argc, argv, m);
+                assert(n1 > 0);
+                assert(n1 <= argc);
+                if (p.rest != NULL) {
+                    int n2 = docopt__umatch(*p.rest, argc-n1, argv+n1, m);
+                    return n1 + n2;
+                }
+                return n1;
+            }
         case DOCOPT__UPATTERN_KIND_COUNT:
             assert(0);
     }
@@ -444,9 +440,14 @@ Docopt_Match docopt__match(Docopt__Pattern p, int argc, const char **argv) {
     m.key   = calloc(argc, sizeof(m.key[0]));
     m.value = calloc(argc, sizeof(m.value[0]));
     for (size_t i=0; i<p.upattern_count; i++) {
-        if (docopt__umatch(p.upattern[i], argc, argv, &m)) break;
+        if (docopt__umatch(p.upattern[i], argc, argv, &m) == argc) break;
     }
-    assert(0);
+    for (int i=0; i<m.count; i++) {
+        if (m.kind[i] == DOCOPT_OPTION) {
+            assert(0);
+        }
+    }
+    return m;
 }
 
 Docopt_Match docopt_interpret(const char *help, int argc, const char **argv) {
